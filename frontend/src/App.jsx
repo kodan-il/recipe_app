@@ -47,7 +47,7 @@ function App() {
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto' }}>
       <h1>🥑 Recipe Finder App</h1>
-      <p>Ketik bahan makanan yang kamu punya (pisahkan dengan koma):</p>
+      <p>Type the ingredients you have (use commas to separate):</p>
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
         <input
@@ -58,16 +58,16 @@ function App() {
           style={{ flex: 1, padding: '10px' }}
         />
         <button onClick={handleSearch} style={{ padding: '10px 20px', cursor: 'pointer' }}>
-          {loading ? 'Mencari...' : 'Cari Resep'}
+          {loading ? 'Searching...' : 'Find recipe'}
         </button>
       </div>
 
       {errorMsg && <p style={{ color: 'red' }}>{errorMsg}</p>}
 
       <div>
-        <h2>Hasil Pencarian:</h2>
+        <h2>Search Results:</h2>
         {!loading && results.length === 0 && (
-          <p>Belum ada hasil. Coba ketik "telur" atau "tahu".</p>
+          <p>No results found. Try typing "Eggs" or "Garlic".</p>
         )}
 
         {Array.isArray(results) &&
@@ -93,11 +93,11 @@ function App() {
                 <h3>{recipe?.title ?? 'Tanpa Judul'}</h3>
                 {matched.length > 0 && (
                   <p>
-                    <strong>Bahan Cocok:</strong> {matched.join(', ')}
+                    <strong>Ingredients:</strong> {matched.join(', ')}
                   </p>
                 )}
                 <p>
-                  <strong>Langkah:</strong>
+                  <strong>Image:</strong>
                 </p>
                 <ol>
                   {steps.map((step, idx) => (
