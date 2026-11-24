@@ -8,6 +8,8 @@ import time
 import requests
 from bs4 import BeautifulSoup
 from recipe_scrapers import scrape_me
+from deep_translator import GoogleTranslator
+import re
 
 app = FastAPI(title="Recipe Engine API")
 
@@ -36,6 +38,9 @@ recipe_example = [
     }
 ]
 
+to_id_translator = GoogleTranslator(source="auto", target="id")
+to_en_translator = GoogleTranslator(source="auto", target="en")
+
 HEADERS ={
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -44,6 +49,7 @@ HEADERS ={
 }
 
 RECIPE_CACHE: Dict[str, Dict[str, Any]] = {}
+TRANSLATION_CACHE: Dict[str, str] = {}
 
 def search_cookpad(query:str, limit: int = 5) -> List[str]:
     "Finding url list for indonesian recipe from cookpad.com"
@@ -60,6 +66,9 @@ def search_cookpad(query:str, limit: int = 5) -> List[str]:
         href = aLink.get("href")
         #U URL Cookpad Indonesia uses 'id/resep/' or '/resep/'
         if isinstance(href, str) and "/resep/" in href:
+            if href.rstrip("/").endswith("/resep/baru") or "/resep/baru?" in href:
+                continue
+
             full_url = href if href.startswith("http") else f"https://cookpad.com{href}"
             clean_url = full_url.split("?")[0]  # Remove query parameters
             if clean_url not in urls:
@@ -94,6 +103,93 @@ def scrape_cookpad_detail(url: str) -> Dict[str, Any] | None:
         print(f"Error scraping {url}: {e}")
         return None
 
+def translate_safe(text: str, target_lang: str = "en") -> str:
+    if not text or not text.strip():
+        return text
+    try:
+        translator = to_en_translator if target_lang == "en" else to_id_translator
+        translated = translator.translate(text)
+        return translated if isinstance(translated, str) else text
+    except Exception as e:
+        print(f"Translation warning ({target_lang}): {e}")
+        return text
+
+def translate_batch_safe(texts: List[str], target_lang: str = "en") -> List[str]:
+    if not texts:
+        return []
+
+    translator = to_en_translator if target_lang == "en" else to_id_translator
+    results: List[str] = []
+    missing_indices: List[int] = []
+    to_translate: List[str] = []
+
+    for idx, raw in enumerate(texts):
+        original = str(raw or "").strip()
+        if not original:
+            results.append("")
+            continue
+
+        cleaned = clean_for_translate(original) or original
+        cache_key = f"{target_lang}:{cleaned}"
+
+        if cache_key in TRANSLATION_CACHE:
+            results.append(TRANSLATION_CACHE[cache_key])
+        else:
+            results.append(original)
+            missing_indices.append(idx)
+            to_translate.append(cleaned)
+
+    chunk_size = 8
+    for start in range(0, len(to_translate), chunk_size):
+        chunk_texts = to_translate[start: start + chunk_size]
+        chunk_idx = missing_indices[start: start + chunk_size]
+        try:
+            translated_list = translator.translate_batch(chunk_texts)
+            for idx, orig_clean, trans in zip(chunk_idx, chunk_texts, translated_list):
+                final_str = trans if isinstance(trans, str) and trans.strip() else orig_clean
+                results[idx] = final_str
+                TRANSLATION_CACHE[f"{target_lang}:{orig_clean}"] = final_str
+            time.sleep(0.4)  # Delay to avoid rate limit
+        except Exception as e:
+            print(f"Batch translate fallback ({target_lang}): {e}")
+            for idx, orig_clean in zip(chunk_idx, chunk_texts):
+                try:
+                    single = translator.translate(orig_clean)
+                    final_str = single if isinstance(single, str)  and single.strip() else orig_clean
+                except Exception:
+                    final_str = orig_clean
+
+                results[idx] = final_str
+                TRANSLATION_CACHE[f"{target_lang}:{orig_clean}"] = final_str
+                time.sleep(0.3)
+
+
+    return results
+
+
+
+def recipe_to_english(recipe: Dict[str, Any]) -> Dict[str, Any]:
+    """Translate recipe fields to English"""
+    result = dict(recipe)
+
+    title_str = str(recipe.get("title")or "")
+    raw_ingredients = [str(x) for x in (recipe.get("ingredients") or []) if x is not None]
+    raw_instructions = [str(x) for x in (recipe.get("instructions") or []) if x is not None]
+
+    combined = [title_str] + raw_ingredients + raw_instructions
+    translated = translate_batch_safe(combined, target_lang="en")
+
+    num_ingredients = len(raw_ingredients)
+    result["title"] = translated[0] if translated else title_str
+    result["ingredients"] = translated[1 : 1 + num_ingredients]
+    result["instructions"] = translated[1 + num_ingredients :]
+
+    return result
+
+def clean_for_translate(text: str) -> str:
+    no_emoji = re.sub(r"[^\w\s.,!?;:()'\"-]", "", text, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", no_emoji).strip()
+
 @app.get("/")
 def home():
     return {"message": "Recipe engine backend is running!"}
@@ -105,34 +201,52 @@ def get_recipes_by_ingredients(user_ingredients: List[str]):
     if not cleaned:
         return []
 
-    query_str = " ".join(cleaned)
+    id_ingredients = [translate_safe(item, "id").lower() for item in cleaned]
+    users_set = set(id_ingredients)
+
+    query_str = " ".join(id_ingredients)
     urls = search_cookpad(query_str, limit=5)
 
-    users_set = set(cleaned)
     matched_results = []
 
-    for idx, url in enumerate(urls):
-        if idx > 0 and url not in RECIPE_CACHE:
-            time.sleep(1)  # Delay to avoid rate limit
+    if not urls:
+        for item in recipe_example:
+            ingredients_text = " ".join(item.get("ingredients", [])).lower()
+            matching_id = [i for i in users_set if i in ingredients_text]
+            if matching_id:
+                matched_results.append((item, matching_id))
+    else:
 
-        recipe = scrape_cookpad_detail(url)
-        if not recipe or not isinstance(recipe, dict):
-            continue
-        
-        ingredients_text = " ".join(recipe.get("ingredients", [])).lower()
-        matching = [i for i in users_set if i in ingredients_text]
+        for idx, url in enumerate(urls):
+            if idx > 0 and url not in RECIPE_CACHE:
+                time.sleep(1)  # Delay to avoid rate limit
 
-        matched_results.append({
-            "recipe": recipe,
-            "match_count": len(matching),
-            "matched_ingredients": matching
+            recipe = scrape_cookpad_detail(url)
+            if not recipe or not isinstance(recipe, dict):
+                continue
+            
+            ingredients_text = " ".join(recipe.get("ingredients", [])).lower()
+            matching_id = [i for i in users_set if i in ingredients_text]
+
+            matched_results.append((recipe, matching_id))
+
+    en_results = []
+    for recipe, matching_id in matched_results:
+        en_results.append({
+            "recipe": recipe_to_english(recipe),
+            "match_count": len(matching_id),
+            "matched_ingredients": [
+                translate_safe(m,"en") for m in matching_id
+            ],
         })
+    en_results.sort(key=lambda x: x["match_count"], reverse=True)
+
 
     print("Query:", query_str)
     print("Found URLs:", urls)
     print("Scrapped count:" , len(matched_results))
-    print("Results:", matched_results)
-    return {"results": matched_results}
+    print("Results:", en_results)
+    return {"results": en_results}
 
 @app.get("/api/recipes/search")
 def search_recipes_by_name(q: str = Query(..., min_length=1)):
