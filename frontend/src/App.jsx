@@ -1,115 +1,160 @@
-import { useState } from 'react';
-import axios from 'axios';
+import { useState } from "react";
 
-function App() {
-  const [inputIngredients, setInputIngredients] = useState('');
+const API_BASE = "http://localhost:8000";
+
+export default function App() {
+  const [inputText, setInputText] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSearch = async () => {
-    if (!inputIngredients.trim()) return;
-    setLoading(true);
-    setErrorMsg('');
+  // Menyimpan detail resep yang sudah dibuka per URL: { [url]: recipeObject }
+  const [detailsByUrl, setDetailsByUrl] = useState({});
+  const [loadingUrl, setLoadingUrl] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
-    const ingredientsList = inputIngredients
-      .split(',')
-      .map((item) => item.trim())
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    const ingredients = inputText
+      .split(",")
+      .map((s) => s.trim())
       .filter(Boolean);
 
+    if (ingredients.length === 0) {
+      setErrorMsg("Please enter at least one ingredient (EN or ID).");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const response = await axios.post(
-        'http://127.0.0.1:8000/api/recipes/by-ingredients',
-        ingredientsList
-      );
-
-      console.log('API response:', response.data);
-
-      // Tangani jika response.data berupa array langsung atau dibungkus properti tertentu
-      const rawData = Array.isArray(response.data)
-        ? response.data
-        : Array.isArray(response.data?.results)
-          ? response.data.results
-          : Array.isArray(response.data?.data)
-            ? response.data.data
-            : [];
-
-      setResults(rawData);
-    } catch (error) {
-      console.error('Error fetching recipes:', error);
-      setResults([]);
-      setErrorMsg('Gagal mengambil data dari server backend.');
+      const res = await fetch(`${API_BASE}/api/recipes/by-ingredients`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ingredients),
+      });
+      const data = await res.json();
+      setResults(Array.isArray(data.results) ? data.results : []);
+    } catch (err) {
+      setErrorMsg("Failed to fetch recipes from backend.");
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto' }}>
-      <h1>🥑 Recipe Finder App</h1>
-      <p>Type the ingredients you have (use commas to separate):</p>
+  const handleOpenDetail = async (url) => {
+    if (!url) return;
+    if (detailsByUrl[url]) return; // Sudah ter-load sebelumnya
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+    setLoadingUrl(url);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/recipes/detail?url=${encodeURIComponent(url)}`
+      );
+      const data = await res.json();
+      if (data.recipe) {
+        setDetailsByUrl((prev) => ({ ...prev, [url]: data.recipe }));
+      }
+    } catch (err) {
+      console.error("Failed to load detail:", err);
+    } finally {
+      setLoadingUrl(null);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 800, margin: "2rem auto", padding: "0 1rem" }}>
+      <h1>Recipe Finder</h1>
+
+      <form onSubmit={handleSearch} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <input
           type="text"
-          placeholder="Contoh: telur, tahu, bawang"
-          value={inputIngredients}
-          onChange={(e) => setInputIngredients(e.target.value)}
-          style={{ flex: 1, padding: '10px' }}
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          placeholder="Type ingredients (e.g. egg, tofu or telur, tahu)"
+          style={{ flex: 1, padding: 10 }}
         />
-        <button onClick={handleSearch} style={{ padding: '10px 20px', cursor: 'pointer' }}>
-          {loading ? 'Searching...' : 'Find recipe'}
+        <button type="submit" disabled={loading} style={{ padding: "10px 18px" }}>
+          {loading ? "Searching..." : "Search"}
         </button>
-      </div>
+      </form>
 
-      {errorMsg && <p style={{ color: 'red' }}>{errorMsg}</p>}
+      {errorMsg && <p style={{ color: "crimson" }}>{errorMsg}</p>}
 
-      <div>
-        <h2>Search Results:</h2>
-        {!loading && results.length === 0 && (
-          <p>No results found. Try typing "Eggs" or "Garlic".</p>
-        )}
+      <div style={{ display: "grid", gap: 16 }}>
+        {results.map((item, idx) => {
+          const r = item.recipe || {};
+          const url = r.url || "";
+          const detail = detailsByUrl[url];
+          const matched = Array.isArray(item.matched_ingredients)
+            ? item.matched_ingredients
+            : [];
 
-        {Array.isArray(results) &&
-          results.map((item, index) => {
-            const recipe = item?.recipe ?? item;
-            const matched = Array.isArray(item?.matched_ingredients)
-              ? item.matched_ingredients
-              : [];
-            const steps = Array.isArray(recipe?.instructions)
-              ? recipe.instructions
-              : [];
-
-            return (
-              <div
-                key={recipe?.id ?? index}
-                style={{
-                  border: '1px solid #ccc',
-                  padding: '15px',
-                  borderRadius: '8px',
-                  marginBottom: '10px',
-                }}
-              >
-                <h3>{recipe?.title ?? 'Tanpa Judul'}</h3>
-                {matched.length > 0 && (
-                  <p>
-                    <strong>Ingredients:</strong> {matched.join(', ')}
-                  </p>
+          return (
+            <div
+              key={url || idx}
+              style={{
+                border: "1px solid #444",
+                borderRadius: 10,
+                padding: 16,
+              }}
+            >
+              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                {r.image && (
+                  <img
+                    src={r.image}
+                    alt={r.title}
+                    style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8 }}
+                  />
                 )}
-                <p>
-                  <strong>Image:</strong>
-                </p>
-                <ol>
-                  {steps.map((step, idx) => (
-                    <li key={idx}>{step}</li>
-                  ))}
-                </ol>
+                <div style={{ flex: 1 }}>
+                  <h2 style={{ margin: "0 0 6px" }}>{r.title}</h2>
+                  <p style={{ margin: "0 0 8px", fontSize: 14 }}>
+                    <strong>Matched ingredients ({item.match_count ?? 0}):</strong>{" "}
+                    {matched.length > 0 ? matched.join(", ") : "—"}
+                  </p>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDetail(url)}
+                      disabled={loadingUrl === url}
+                    >
+                      {loadingUrl === url
+                        ? "Translating detail..."
+                        : detail
+                        ? "English Detail Loaded"
+                        : "Show Ingredients & Steps (EN)"}
+                    </button>
+                    {url && (
+                      <a href={url} target="_blank" rel="noreferrer">
+                        Original Cookpad Link
+                      </a>
+                    )}
+                  </div>
+                </div>
               </div>
-            );
-          })}
+
+              {detail && (
+                <div style={{ marginTop: 14, borderTop: "1px solid #333", paddingTop: 12 }}>
+                  <h3>Ingredients (EN)</h3>
+                  <ul>
+                    {(detail.ingredients || []).map((ing, i) => (
+                      <li key={i}>{ing}</li>
+                    ))}
+                  </ul>
+
+                  <h3>Steps / Instructions (EN)</h3>
+                  <ol>
+                    {(detail.instructions || []).map((step, i) => (
+                      <li key={i}>{step}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
-
-export default App;
