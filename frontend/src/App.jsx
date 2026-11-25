@@ -7,7 +7,7 @@ export default function App() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Menyimpan detail resep yang sudah dibuka per URL: { [url]: recipeObject }
+  // saving recipe details by URL: { [url]: recipeObject }
   const [detailsByUrl, setDetailsByUrl] = useState({});
   const [loadingUrl, setLoadingUrl] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -33,6 +33,9 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(ingredients),
       });
+      if (!res.ok) {
+        throw new Error("Failed to fetch recipes from backend.");
+      }
       const data = await res.json();
       setResults(Array.isArray(data.results) ? data.results : []);
     } catch (err) {
@@ -44,13 +47,16 @@ export default function App() {
 
   const handleOpenDetail = async (url) => {
     if (!url) return;
-    if (detailsByUrl[url]) return; // Sudah ter-load sebelumnya
+    if (detailsByUrl[url]) return;
 
     setLoadingUrl(url);
     try {
       const res = await fetch(
         `${API_BASE}/api/recipes/detail?url=${encodeURIComponent(url)}`
       );
+      if (!res.ok) {
+        throw new Error(`Failed to fetch detail for ${url}`);
+      }
       const data = await res.json();
       if (data.recipe) {
         setDetailsByUrl((prev) => ({ ...prev, [url]: data.recipe }));
