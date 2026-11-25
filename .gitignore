@@ -1,5 +1,5 @@
 # Byte-compiled / optimized / DLL files (Python)
-__pycache__/
+backend/__pycache__/
 *.py[cod]
 *$py.class
 
@@ -15,7 +15,7 @@ ENV/
 .idea/
 *.swp
 *.swo
-.DS_Store
+backend/.DS_Store
 
 # Environment variables & secrets
 .env

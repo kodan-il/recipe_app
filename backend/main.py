@@ -3,13 +3,9 @@ import time
 from typing import Any, Dict, List
 from urllib.parse import quote
 
-import requests
-from bs4 import BeautifulSoup
-from deep_translator import GoogleTranslator, MyMemoryTranslator
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from recipe_scrapers import scrape_me
-import argostranslate.translate as argo_translate
 
 from services.translator import RecipeTranslator
 from services.scrapper import scrapper
@@ -23,6 +19,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+translator = RecipeTranslator()
+recipe_scrapper = scrapper()
 
 recipe_example = [
 {
@@ -58,7 +57,7 @@ def home():
 def get_recipes_by_ingredients(user_ingredients: List[str]):
     cleaned = [ingredient.strip().lower() for ingredient in user_ingredients if ingredient.strip()]
     if not cleaned:
-        return []
+        return {"results": [], "message": "No valid ingredients provided."}
 
     id_ingredients = [RecipeTranslator().translate_safe(item, "id").lower() for item in cleaned]
     users_set = set(id_ingredients)
@@ -81,6 +80,7 @@ def get_recipes_by_ingredients(user_ingredients: List[str]):
             recipe = scrapper().scrape_cookpad_detail(url)
             if not recipe or not isinstance(recipe, dict):
                 continue
+
             ingredients_text = " ".join(recipe.get("ingredients", [])).lower()
             matching_id = [i for i in users_set if i in ingredients_text]
             candidates.append((recipe, matching_id))
@@ -102,31 +102,28 @@ def get_recipes_by_ingredients(user_ingredients: List[str]):
 
     summary_results.sort(key=lambda x: x["match_count"], reverse=True)
 
-    print("Query:", query_str)
-    print("Found URLs:", urls)
-    print("Scrapped count:" , len(candidates))
-    print("Results:", summary_results)
     return {"results": summary_results}
 
 @app.get("/api/recipes/detail")
 def get_recipe_detail(url:str = Query(..., min_length=5)):
     recipe = scrapper().scrape_cookpad_detail(url)
     if not recipe or not isinstance(recipe, dict):
-        return{"error": "Recipe detail not available", "url" :url}
-    en_recipe = RecipeTranslator().recipe_to_english(recipe)
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    
+    en_recipe = translator.recipe_to_english(recipe)
     return {"recipe": en_recipe}
 
 
 @app.get("/api/recipes/search")
 def search_recipes_by_name(q: str = Query(..., min_length=1)):
-    urls = scrapper().search_cookpad(q, limit=5)
+    urls = recipe_scrapper.search_cookpad(q, limit=5)
     results = []
 
     for idx, url in enumerate(urls):
         if idx > 0 and url not in RECIPE_CACHE:
             time.sleep(1)  # Delay to avoid rate limit
 
-        recipe = scrapper().scrape_cookpad_detail(url)
+        recipe = recipe_scrapper.scrape_cookpad_detail(url)
         if not recipe or not isinstance(recipe, dict):
             continue
 
@@ -148,5 +145,5 @@ def scrape_recipe(url: str = Query(..., description="URL of the recipe to scrape
             "instructions": scraper.instructions()
         }
     except Exception as e:
-        return {"error": f"error fetching recipe: {str(e)}"}
+        return HTTPException(status_code=502, detail=f"Error scraping recipe: {str(e)}")
 

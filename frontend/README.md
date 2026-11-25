@@ -1,16 +1,51 @@
-# React + Vite
+## Indonesian Recipe Finder App
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A test case scenario of Indonesian recipe application finder that automatically translated into English directly.
 
-Currently, two official plugins are available:
+This app featuring **FastAPI** RESTfulAPI backend with **offline translation** (`Argos Translate` + custom culinary glossary & caching) and **React + Vite** frontend.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Project Structure
+- `backend/` - FastAPI application, recipe scraping, and offline translation services.
+- `frontend/` - React + Vite user interface
 
-## React Compiler
+## Tech stacks and Dependencies
+### Backend (Python)
+- **FastAPI & Uvicorn** - RESTful API framework and ASGI server
+- **ARGOS Translate** - Local oofline translation engine (ID <-> EN) combined with a custom recipe glossary and in-memory caching
+- **Recipe-Scrapers, Reqeusts, & BeautifulSoup4** - Recipe scraping and HTML Parsing
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Frontend (React)
+- **React** - UI Components for searching and viewing recipe details
+- **Vite** - Frontend build tool and development server
 
-## Expanding the Oxlint configuration
+## Setup and Running Local
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### 1. Backend
+```bash
+cd backend
+python3 -m venv myenv
+./myenv/bin/pip install --upgrade pip
+./myenv/bin/pip install -r requirements.txt
+
+./myenv/bin/python -c "
+import argostranslate.package
+
+argostranslate.package.update_package_index()
+packages = argostranslate.package.get_available_packages()
+for src, dst in [('id', 'en'), ('en', 'id')]:
+    pkg = next((p for p in packages if p.from_code == src and p.to_code == dst), None)
+    if pkg:
+        print(f'Installing {src} -> {dst}...')
+        argostranslate.package.install_from_path(pkg.download())
+print('Done.')
+"
+
+./myenv/bin/python -m uvicorn main:app --reload
+```
+
+### 2. Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
