@@ -4,6 +4,7 @@ from main import app
 from services.translator import RecipeTranslator
 from services.glossary import RecipeGlossary
 from services.scrapper import scrapper
+import pytest
 
 client = TestClient(app)
 
@@ -44,7 +45,8 @@ def test_by_ingredients_empty_input_returns_empty_results():
     response = client.post("/api/recipes/by-ingredients", json=[])
     data = response.json()
     assert response.status_code == 200
-    assert data == {"results": []}
+    assert data["results"] == []
+    assert "message" in data
 
 class DummyResponse:
     def __init__(self, text:str, status_code: int = 200):
@@ -83,6 +85,5 @@ def test_scrapper_handle_error(monkeypatch):
     monkeypatch.setattr("services.scrapper.requests.get", failing_get)
 
     s = scrapper()
-    urls = s.search_cookpad("tahu", limit=5)
-
-    assert urls == []
+    with pytest.raises(ConnectionError):
+        s.search_cookpad("tahu", limit=5)
