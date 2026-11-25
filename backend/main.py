@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
-from deep_translator import GoogleTranslator
+from deep_translator import GoogleTranslator, MyMemoryTranslator
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from recipe_scrapers import scrape_me
@@ -40,6 +40,9 @@ recipe_example = [
 to_id_translator = GoogleTranslator(source="auto", target="id")
 to_en_translator = GoogleTranslator(source="auto", target="en")
 
+fallback_id = MyMemoryTranslator(source="en-GB", target="id-ID")
+fallback_en = MyMemoryTranslator(source="id-ID", target="en-GB")
+
 HEADERS ={
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -51,6 +54,7 @@ RECIPE_CACHE: Dict[str, Dict[str, Any]] = {}
 TRANSLATION_CACHE: Dict[str, str] = {}
 EN_RECIPE_CACHE : Dict[str, Dict[str, Any]] = {}
 
+## scraping method logic
 def search_cookpad(query:str, limit: int = 5) -> List[str]:
     "Finding url list for indonesian recipe from cookpad.com"
     encoded_query = quote(query.strip())
@@ -113,6 +117,12 @@ def scrape_cookpad_detail(url: str) -> Dict[str, Any] | None:
 
         return None
 
+## Translation logic
+
+def clean_for_translate(text: str) -> str:
+    no_emoji = re.sub(r"[^\w\s.,!?;:()'\"-]", "", text, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", no_emoji).strip()
+
 def translate_safe(text: str, target_lang: str = "en") -> str:
     if not text or not text.strip():
         return text
@@ -123,13 +133,23 @@ def translate_safe(text: str, target_lang: str = "en") -> str:
         return TRANSLATION_CACHE[cache_key]
     try:
         translator = to_en_translator if target_lang == "en" else to_id_translator
-        translated = translator.translate(text)
-        final_str = translated if isinstance(translated, str) and translated.strip() else cleaned
-        TRANSLATION_CACHE[cache_key] = final_str
-        return translated if isinstance(translated, str) else text
-    except Exception as e:
-        print(f"Translation warning ({target_lang}): {e}")
-        return text
+        translated = translator.translate(cleaned)
+        if isinstance(translated, str) and translated.strip():
+            TRANSLATION_CACHE[cache_key] = translated.strip()
+            return translated.strip()
+    except Exception:
+        pass
+
+    try:
+        fallback = fallback_en if target_lang == "en" else fallback_id
+        translate_fallback = fallback.translate(cleaned)
+        if isinstance(translate_fallback, str) and translate_fallback.strip():
+            TRANSLATION_CACHE[cache_key] = translate_fallback.strip()
+            return translate_fallback.strip()
+    except Exception:
+        pass
+
+    return ""  # Return empty string if translation fails
 
 def translate_batch_safe(texts: List[str], target_lang: str = "en") -> List[str]:
     if not texts:
@@ -204,10 +224,6 @@ def recipe_to_english(recipe: Dict[str, Any]) -> Dict[str, Any]:
     result["instructions"] = translated[1 + num_ingredients :]
 
     return result
-
-def clean_for_translate(text: str) -> str:
-    no_emoji = re.sub(r"[^\w\s.,!?;:()'\"-]", "", text, flags=re.UNICODE)
-    return re.sub(r"\s+", " ", no_emoji).strip()
 
 @app.get("/")
 def home():
