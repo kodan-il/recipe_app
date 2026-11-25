@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from recipe_scrapers import scrape_me
 import argostranslate.translate as argo_translate
 
+from services.translator import RecipeTranslator
+
 app = FastAPI(title="Recipe Engine API")
 
 app.add_middleware(
@@ -55,53 +57,7 @@ RECIPE_CACHE: Dict[str, Dict[str, Any]] = {}
 TRANSLATION_CACHE: Dict[str, str] = {}
 EN_RECIPE_CACHE : Dict[str, Dict[str, Any]] = {}
 
-RECIPE_GLOSSARY_PRE: Dict[str, str] = {
-    "kecap manis": "sweet soy sauce",
-    "kecap asin": "salty soy sauce",
-    "daun jeruk": "kaffir lime leaves",
-    "daun salam": "indonesian bay leaves",
-    "bawang putih": "garlic",
-    "bawang merah": "shallots",
-    "bawang bombay": "onion",
-    "telur puyuh": "quail eggs",
-    "tahu putih": "white tofu",
-    "tahu kuning": "yellow tofu",
-    "cabai rawit": "cayenne pepper",
-    "cabai merah": "red chili",
-    "santan cair": "thin coconut milk",
-    "santan kental": "thick coconut milk",
-    "potong dadu": "diced",
-    "iris tipis": "thinly sliced",
-    "haluskan": "grind",
-    "santan": "coconut milk",
-    "tempe": "tempeh",
-    "terasi": "shrimp paste",
-    "kemiri": "candlenut",
-    "kunyit": "turmeric",
-    "lengkuas": "galangal",
-    "serai": "lemongrass",
-    "tumis": "sauté",
-    "tahu": "tofu",
-    "udang": "shrimp",
-    "sdm": "tbsp",
-    "sdt": "tsp",
-    "siung": "cloves",
-    "lembar": "leaves",
-    "btr": "pieces",
-    "bh": "pieces",
-    "ceplok" : "fried",
-    "telor" : "eggs",
-    "satset": "quick",
-    "baso": "meatball",
-    "masak": "style",
-}
 
-RECIPE_GLOSSARY_POST: Dict[str, str] = {
-    "sauces know": "tofu",
-    "knows": "tofu",
-    " know ": " tofu ",
-    "sautéed": "sauté",
-}
 
 ## scraping method logic
 def search_cookpad(query:str, limit: int = 5) -> List[str]:
@@ -146,8 +102,8 @@ def scrape_cookpad_detail(url: str) -> Dict[str, Any] | None:
         raw_instruction = scraper.instructions()
         if isinstance(raw_instruction, str):
             steps = [line.strip() for line in raw_instruction.split("\n") if line.strip()]
-        elif isinstance(raw_instructions, list):
-            steps = [str(s).strip() for s in raw_instructions if str(s).strip()]
+        elif isinstance(raw_instruction, list):
+            steps = [str(s).strip() for s in raw_instruction if str(s).strip()]
         else:
             steps = []
 
@@ -166,147 +122,8 @@ def scrape_cookpad_detail(url: str) -> Dict[str, Any] | None:
 
         return None
 
-## Glossary for translation
 
-def apply_glossary_pre(text: str) -> str:
-    result = text
-    sorted_glossary = sorted(RECIPE_GLOSSARY_PRE.items(), key=lambda x: len(x[0]), reverse=True)
 
-    for id_term, en_term in sorted_glossary:
-        pattern = re.compile(re.escape(id_term), re.IGNORECASE)
-        result = pattern.sub(en_term, result)
-
-    return result
-
-def apply_glossary_post(text: str) -> str:
-    result = text
-    for bad_term, fixed_term in RECIPE_GLOSSARY_POST.items():
-        pattern = re.compile(re.escape(bad_term), re.IGNORECASE)
-        result = pattern.sub(fixed_term, result)
-    return result
-
-## Translation logic
-
-def clean_for_translate(text: str) -> str:
-    no_emoji = re.sub(r"[^\w\s.,!?;:()'\"-]", "", text, flags=re.UNICODE)
-    return re.sub(r"\s+", " ", no_emoji).strip()
-
-def translate_safe(text: str, target_lang: str = "en") -> str:
-    if not text or not text.strip():
-        return text
-
-    cleaned = clean_for_translate(text) or text.strip()
-    cache_key = f"{target_lang}:{cleaned}"
-    if cache_key in TRANSLATION_CACHE:
-        return TRANSLATION_CACHE[cache_key]
-
-    try:
-        from_code = "id" if target_lang == "en" else "en"
-        to_code = target_lang
-        pre_processed = apply_glossary_pre(cleaned) if target_lang == "en" else cleaned
-        translated = argo_translate.translate(pre_processed, from_code, to_code)
-        final_result = apply_glossary_post(translated) if target_lang == "en" else translated
-        final_result = final_result.strip() if final_result else cleaned
-
-        TRANSLATION_CACHE[cache_key] = final_result
-        return final_result
-    except Exception as e:
-        print(f"Argos Translate failed ({target_lang}): {e}")
-        return cleaned
-    # try:
-    #     translator = to_en_translator if target_lang == "en" else to_id_translator
-    #     translated = translator.translate(cleaned)
-    #     if isinstance(translated, str) and translated.strip():
-    #         TRANSLATION_CACHE[cache_key] = translated.strip()
-    #         return translated.strip()
-    # except Exception:
-    #     pass
-
-    # try:
-    #     fallback = fallback_en if target_lang == "en" else fallback_id
-    #     translate_fallback = fallback.translate(cleaned)
-    #     if isinstance(translate_fallback, str) and translate_fallback.strip():
-    #         TRANSLATION_CACHE[cache_key] = translate_fallback.strip()
-    #         return translate_fallback.strip()
-    # except Exception:
-    #     pass
-
-    # return ""  # Return empty string if translation fails
-
-def translate_batch_safe(texts: List[str], target_lang: str = "en") -> List[str]:
-    return [translate_safe(text, target_lang) for text in texts ]
-    # if not texts:
-    #     return []
-
-    # translator = to_en_translator if target_lang == "en" else to_id_translator
-    # results: List[str] = []
-    # missing_indices: List[int] = []
-    # to_translate: List[str] = []
-
-    # for idx, raw in enumerate(texts):
-    #     original = str(raw or "").strip()
-    #     if not original:
-    #         results.append("")
-    #         continue
-
-    #     cleaned = clean_for_translate(original) or original
-    #     cache_key = f"{target_lang}:{cleaned}"
-
-    #     if cache_key in TRANSLATION_CACHE:
-    #         results.append(TRANSLATION_CACHE[cache_key])
-    #     else:
-    #         results.append(original)
-    #         missing_indices.append(idx)
-    #         to_translate.append(cleaned)
-
-    # chunk_size = 8
-    # for start in range(0, len(to_translate), chunk_size):
-    #     chunk_texts = to_translate[start: start + chunk_size]
-    #     chunk_idx = missing_indices[start: start + chunk_size]
-    #     try:
-    #         translated_list = translator.translate_batch(chunk_texts)
-    #         for idx, orig_clean, trans in zip(chunk_idx, chunk_texts, translated_list):
-    #             final_str = trans if isinstance(trans, str) and trans.strip() else orig_clean
-    #             results[idx] = final_str
-    #             TRANSLATION_CACHE[f"{target_lang}:{orig_clean}"] = final_str
-    #         time.sleep(0.4)  # Delay to avoid rate limit
-    #     except Exception as e:
-    #         print(f"Batch translate fallback ({target_lang}): {e}")
-    #         for idx, orig_clean in zip(chunk_idx, chunk_texts):
-    #             try:
-    #                 single = translator.translate(orig_clean)
-    #                 final_str = single if isinstance(single, str)  and single.strip() else orig_clean
-    #             except Exception:
-    #                 final_str = orig_clean
-
-    #             results[idx] = final_str
-    #             TRANSLATION_CACHE[f"{target_lang}:{orig_clean}"] = final_str
-    #             time.sleep(0.3)
-
-    
-    # return results
-
-def recipe_to_english(recipe: Dict[str, Any]) -> Dict[str, Any]:
-    """Translate recipe fields to English"""
-    cache_key = str(recipe.get("url") or recipe.get("id") or "")
-    if cache_key and cache_key in EN_RECIPE_CACHE:
-        return EN_RECIPE_CACHE[cache_key]
-
-    
-    result = dict(recipe)
-    title_str = str(recipe.get("title")or "")
-    raw_ingredients = [str(x) for x in (recipe.get("ingredients") or []) if x is not None]
-    raw_instructions = [str(x) for x in (recipe.get("instructions") or []) if x is not None]
-
-    combined = [title_str] + raw_ingredients + raw_instructions
-    translated = translate_batch_safe(combined, target_lang="en")
-
-    num_ingredients = len(raw_ingredients)
-    result["title"] = translated[0] if translated else title_str
-    result["ingredients"] = translated[1 : 1 + num_ingredients]
-    result["instructions"] = translated[1 + num_ingredients :]
-
-    return result
 
 @app.get("/")
 def home():
@@ -318,7 +135,7 @@ def get_recipes_by_ingredients(user_ingredients: List[str]):
     if not cleaned:
         return []
 
-    id_ingredients = [translate_safe(item, "id").lower() for item in cleaned]
+    id_ingredients = [RecipeTranslator().translate_safe(item, "id").lower() for item in cleaned]
     users_set = set(id_ingredients)
 
     query_str = " ".join(id_ingredients)
@@ -345,8 +162,8 @@ def get_recipes_by_ingredients(user_ingredients: List[str]):
 
     summary_results = []
     for recipe, matching_id in candidates:
-        title_en = translate_safe(str(recipe.get("title") or ""), "en")
-        matched_en = [translate_safe(m, "en") for m in matching_id]
+        title_en = RecipeTranslator().translate_safe(str(recipe.get("title") or ""), "en")
+        matched_en = [RecipeTranslator().translate_safe(m, "en") for m in matching_id]
         summary_results.append({
             "recipe":{
                 "id": recipe.get("id") or recipe.get("url"),
