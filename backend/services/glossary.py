@@ -52,13 +52,13 @@ class RecipeGlossary:
     }
 
     def __init__(self):
-        sorted_pre = sorted(self.PRE_RECIPE_GLOSSARY.items(), key=lambda x: len(x[0]), reverse=True)
+        sorted_pre = sorted(self.RECIPE_GLOSSARY_PRE.items(), key=lambda x: len(x[0]), reverse=True)
         self._pre_patterns: List[Tuple[re.Pattern, str]] = [
                 (re.compile(re.escape(k), re.IGNORECASE), v) for k, v in sorted_pre
             ]
             
         self._post_patterns: List[Tuple[re.Pattern, str]] = [
-                (re.compile(re.escape(k), re.IGNORECASE), v) for k, v in self.POST_GLOSSARY.items()
+                (re.compile(re.escape(k), re.IGNORECASE), v) for k, v in self.RECIPE_GLOSSARY_POST.items()
             ]
 
 

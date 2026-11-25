@@ -12,6 +12,7 @@ from recipe_scrapers import scrape_me
 import argostranslate.translate as argo_translate
 
 from services.translator import RecipeTranslator
+from services.scrapper import scrapper
 
 app = FastAPI(title="Recipe Engine API")
 
@@ -40,12 +41,6 @@ recipe_example = [
     }
 ]
 
-to_id_translator = GoogleTranslator(source="auto", target="id")
-to_en_translator = GoogleTranslator(source="auto", target="en")
-
-fallback_id = MyMemoryTranslator(source="en-GB", target="id-ID")
-fallback_en = MyMemoryTranslator(source="id-ID", target="en-GB")
-
 HEADERS ={
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -54,76 +49,6 @@ HEADERS ={
 }
 
 RECIPE_CACHE: Dict[str, Dict[str, Any]] = {}
-TRANSLATION_CACHE: Dict[str, str] = {}
-EN_RECIPE_CACHE : Dict[str, Dict[str, Any]] = {}
-
-
-
-## scraping method logic
-def search_cookpad(query:str, limit: int = 5) -> List[str]:
-    "Finding url list for indonesian recipe from cookpad.com"
-    encoded_query = quote(query.strip())
-    search_url = f"https://cookpad.com/id/cari/{encoded_query}"
-
-    response = requests.get(search_url, headers=HEADERS, timeout=10)
-    response.raise_for_status()
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    urls: List[str] = []
-
-    for aLink in soup.find_all("a", href=True):
-        href = aLink.get("href")
-        #U URL Cookpad Indonesia uses 'id/resep/' or '/resep/'
-        if isinstance(href, str) and "/resep/" in href:
-            if href.rstrip("/").endswith("/resep/baru") or "/resep/baru?" in href:
-                continue
-
-            full_url = href if href.startswith("http") else f"https://cookpad.com{href}"
-            clean_url = full_url.split("?")[0]  # Remove query parameters
-            if clean_url not in urls:
-                urls.append(clean_url)
-        if len(urls) >= limit:
-            break
-
-    return urls
-
-def scrape_cookpad_detail(url: str) -> Dict[str, Any] | None:
-    """Getting recipe detail with recipe-scrapers using CACHE"""
-    if url in RECIPE_CACHE:
-        return RECIPE_CACHE[url]
-
-    for item in recipe_example:
-        if item["url"].split("?")[0] == url.split("?")[0]:
-            RECIPE_CACHE[url] = item
-            return item
-
-    try:
-        scraper = scrape_me(url)
-        raw_instruction = scraper.instructions()
-        if isinstance(raw_instruction, str):
-            steps = [line.strip() for line in raw_instruction.split("\n") if line.strip()]
-        elif isinstance(raw_instruction, list):
-            steps = [str(s).strip() for s in raw_instruction if str(s).strip()]
-        else:
-            steps = []
-
-        recipe_data ={
-            "id":url,
-            "title": scraper.title(),
-            "ingredients": scraper.ingredients() or[],
-            "instructions": steps,
-            "image": scraper.image(),
-            "url": url,
-        }
-        RECIPE_CACHE[url] = recipe_data
-        return recipe_data
-    except Exception as e:
-        print(f"Error scraping {url}: {e}")
-
-        return None
-
-
-
 
 @app.get("/")
 def home():
@@ -139,7 +64,7 @@ def get_recipes_by_ingredients(user_ingredients: List[str]):
     users_set = set(id_ingredients)
 
     query_str = " ".join(id_ingredients)
-    urls = search_cookpad(query_str, limit=5)
+    urls = scrapper().search_cookpad(query_str, limit=5)
 
     candidates =[]
     if not urls:
@@ -153,7 +78,7 @@ def get_recipes_by_ingredients(user_ingredients: List[str]):
             if idx > 0 and url not in RECIPE_CACHE:
                 time.sleep(0.8)
             
-            recipe = scrape_cookpad_detail(url)
+            recipe = scrapper().scrape_cookpad_detail(url)
             if not recipe or not isinstance(recipe, dict):
                 continue
             ingredients_text = " ".join(recipe.get("ingredients", [])).lower()
@@ -185,7 +110,7 @@ def get_recipes_by_ingredients(user_ingredients: List[str]):
 
 @app.get("/api/recipes/detail")
 def get_recipe_detail(url:str = Query(..., min_length=5)):
-    recipe = scrape_cookpad_detail(url)
+    recipe = scrapper().scrape_cookpad_detail(url)
     if not recipe or not isinstance(recipe, dict):
         return{"error": "Recipe detail not available", "url" :url}
     en_recipe = RecipeTranslator().recipe_to_english(recipe)
@@ -194,14 +119,14 @@ def get_recipe_detail(url:str = Query(..., min_length=5)):
 
 @app.get("/api/recipes/search")
 def search_recipes_by_name(q: str = Query(..., min_length=1)):
-    urls = search_cookpad(q, limit=5)
+    urls = scrapper().search_cookpad(q, limit=5)
     results = []
 
     for idx, url in enumerate(urls):
         if idx > 0 and url not in RECIPE_CACHE:
             time.sleep(1)  # Delay to avoid rate limit
 
-        recipe = scrape_cookpad_detail(url)
+        recipe = scrapper().scrape_cookpad_detail(url)
         if not recipe or not isinstance(recipe, dict):
             continue
 
