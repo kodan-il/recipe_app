@@ -1,6 +1,6 @@
 import re
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 from urllib.parse import quote
 
 import requests
@@ -82,7 +82,8 @@ class scrapper:
             if isinstance(raw_instruction, str):
                 steps = [line.strip() for line in raw_instruction.split("\n") if line.strip()]
             elif isinstance(raw_instruction, list):
-                steps = [str(s).strip() for s in raw_instruction if str(s).strip()]
+                instructions = cast(List[Any], raw_instruction)
+                steps = [str(s).strip() for s in instructions if str(s).strip()]
             else:
                 steps = []
 
