@@ -188,7 +188,7 @@ def get_recipe_detail(url:str = Query(..., min_length=5)):
     recipe = scrape_cookpad_detail(url)
     if not recipe or not isinstance(recipe, dict):
         return{"error": "Recipe detail not available", "url" :url}
-    en_recipe = recipe_to_english(recipe)
+    en_recipe = RecipeTranslator().recipe_to_english(recipe)
     return {"recipe": en_recipe}
 
 
