@@ -1,6 +1,5 @@
 import re
-from typing import Any, Dict, Optional, List, Tuple
-from deep_translator import GoogleTranslator, MyMemoryTranslator
+from typing import Any, Dict, Optional, List
 import argostranslate.translate as argo_translate
 
 from app.services.glossary import RecipeGlossary

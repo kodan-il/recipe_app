@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query, HTTPException, Path
 
 from app.dependencies import get_recipe_service
-from app.schemas import RecipeDetail,RecipeSearchResponse,RecipeSummary
+from app.schemas import RecipeDetail,RecipeSearchResponse
 from app.services.recipe_service import RecipeService, RecipeNotFound
 from app.services.scrapper import ScraperError
 
