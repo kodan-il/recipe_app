@@ -66,7 +66,12 @@ class RecipeGlossary:
         "pecel": "vegetable salad with peanut sauce",
         "gado-gado": "vegetable salad with peanut sauce",
         "rawon": "black beef soup",
-    }
+        "mie goreng": "fried noodle",
+        "Mie nyemek": "fried soggy style noodle",
+        "cah": "stir-fried",
+        "Tauge": "bean-sprout",
+        "Acar": "pickles",
+   }
 
     RECIPE_GLOSSARY_POST: Dict[str, str] = {
         "sauces know": "tofu",

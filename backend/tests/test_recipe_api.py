@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
 
-from main import app
-from services.translator import RecipeTranslator
-from services.glossary import RecipeGlossary
-from services.scrapper import scrapper
+from backend.app.main import app
+from backend.app.services.translator import RecipeTranslator
+from backend.app.services.glossary import RecipeGlossary
+from backend.app.services.scrapper import scrapper
 import pytest
 
 client = TestClient(app)

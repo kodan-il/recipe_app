@@ -28,11 +28,9 @@ export default function App() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/recipes/by-ingredients`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ingredients),
-      });
+      const res = await fetch(
+        `${API_BASE}/api/v1/recipes?ingredients=${encodeURIComponent(ingredients.join(","))}`
+      );
       if (!res.ok) {
         throw new Error("Failed to fetch recipes from backend.");
       }
@@ -51,16 +49,12 @@ export default function App() {
 
     setLoadingUrl(url);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/recipes/detail?url=${encodeURIComponent(url)}`
-      );
+      const res = await fetch(`${API_BASE}/api/v1/recipes/${id}`);
       if (!res.ok) {
         throw new Error(`Failed to fetch detail for ${url}`);
       }
       const data = await res.json();
-      if (data.recipe) {
-        setDetailsByUrl((prev) => ({ ...prev, [url]: data.recipe }));
-      }
+      setDetailsByUrl((prev) => ({ ...prev, [id]: data }));
     } catch (err) {
       console.error("Failed to load detail:", err);
     } finally {

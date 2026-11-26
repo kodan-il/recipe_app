@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, List, Tuple
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 import argostranslate.translate as argo_translate
 
-from services.glossary import RecipeGlossary
+from app.services.glossary import RecipeGlossary
 
 
 TRANSLATION_CACHE: Dict[str, str] = {}
@@ -15,7 +15,6 @@ class RecipeTranslator:
         self.glossary = glossary or RecipeGlossary()
 
     @staticmethod
-
     def clean_for_translate(text: str) -> str:
         no_emoji = re.sub(r"[^\w\s.,!?;:()'\"-]", "", text, flags=re.UNICODE)
         return re.sub(r"\s+", " ", no_emoji).strip()
@@ -66,4 +65,6 @@ class RecipeTranslator:
         result["ingredients"] = translated[1 : 1 + num_ingredients]
         result["instructions"] = translated[1 + num_ingredients :]
 
+        if cache_key:
+            EN_RECIPE_CACHE[cache_key] = result
         return result
