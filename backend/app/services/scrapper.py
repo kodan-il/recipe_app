@@ -16,31 +16,6 @@ logger = logging.getLogger(__name__)
 
 RECIPE_ID_PATTERN = re.compile(r"/resep/(\d+)")
 
-HEADERS ={
-    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"),
-        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-}
-
-RECIPE_CACHE: Dict[str, Dict[str, Any]] = {}
-
-recipe_example = [
-{
-        "id": 1,
-        "title": "Nasi Goreng Telur",
-        "ingredients": ["nasi", "telur", "bawang putih", "kecap", "garam"],
-        "instructions": ["Tumis bawang putih.", "Masukkan telur lalu orak-arik.", "Masukkan nasi dan kecap, aduk rata."],
-        "url": "https://cookpad.com/id/resep/26898751?ref=search&search_term=nasi+goreng"
-    },
-    {
-        "id": 2,
-        "title": "Tahu Telur Praktis",
-        "ingredients": ["tahu", "telur", "garam", "bawang merah"],
-        "instructions": ["Kocok telur dan tahu potongan dadu.", "Goreng hingga kecokelatan."],
-        "url": "https://cookpad.com/id/resep/14933518?ref=search&search_term=tahu+telur"
-    }
-]
 class ScraperError(Exception):
     """Recipe site could not be reached or parsed."""
     
@@ -52,7 +27,7 @@ class scrapper:
 
     @staticmethod
     def url_for(recipe_id: str) -> str:
-        return f"{config.COOKPAD_BASE}id/resep/{recipe_id}"
+        return f"{config.COOKPAD_BASE}/id/resep/{recipe_id}"
 
     @staticmethod
     def extract_id(href: str) -> str | None:
@@ -62,7 +37,7 @@ class scrapper:
         return None
                         
     ## scraping method logic
-    def search_cookpad(self, query:str, limit: int = 5) -> List[str]:
+    def search(self, query:str, limit: int = 5) -> List[str]:
         "Finding url list for indonesian recipe from cookpad.com"
         encoded_query = quote(query.strip())
         search_url = f"{config.COOKPAD_BASE}/id/cari/{encoded_query}"
@@ -85,41 +60,6 @@ class scrapper:
                 break
         return ids
 
-    def scrape_cookpad_detail(self, url: str) -> Dict[str, Any] | None:
-        """Getting recipe detail with recipe-scrapers using CACHE"""
-        if url in RECIPE_CACHE:
-            return RECIPE_CACHE[url]
-
-        for item in recipe_example:
-            if item["url"].split("?")[0] == url.split("?")[0]:
-                RECIPE_CACHE[url] = item
-                return item
-
-        try:
-            scraper = scrape_me(url)
-            raw_instruction = scraper.instructions()
-            if isinstance(raw_instruction, str):
-                steps = [line.strip() for line in raw_instruction.split("\n") if line.strip()]
-            elif isinstance(raw_instruction, list):
-                instructions = cast(List[Any], raw_instruction)
-                steps = [str(s).strip() for s in instructions if str(s).strip()]
-            else:
-                steps = []
-
-            recipe_data ={
-                "id":url,
-                "title": scraper.title(),
-                "ingredients": scraper.ingredients() or[],
-                "instructions": steps,
-                "image": scraper.image(),
-                "url": url,
-            }
-            RECIPE_CACHE[url] = recipe_data
-            return recipe_data
-        except Exception as e:
-            print(f"Error scraping {url}: {e}")
-
-            return None
 
     def get(self, recipe_id:str) -> dict | None:
         if recipe_id in self._cache:

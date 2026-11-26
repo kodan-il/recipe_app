@@ -7,9 +7,9 @@ export default function App() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // saving recipe details by URL: { [url]: recipeObject }
-  const [detailsByUrl, setDetailsByUrl] = useState({});
-  const [loadingUrl, setLoadingUrl] = useState(null);
+  // saving recipe details by id: { [id]: recipeObject }
+  const [detailsById, setDetailsById] = useState({});
+  const [loadingId, setLoadingId] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
 
   const handleSearch = async (e) => {
@@ -43,22 +43,22 @@ export default function App() {
     }
   };
 
-  const handleOpenDetail = async (url) => {
-    if (!url) return;
-    if (detailsByUrl[url]) return;
+  const handleOpenDetail = async (id) => {
+    if (!id) return;
+    if (detailsById[id]) return;
 
-    setLoadingUrl(url);
+    setLoadingId(id);
     try {
       const res = await fetch(`${API_BASE}/api/v1/recipes/${id}`);
       if (!res.ok) {
-        throw new Error(`Failed to fetch detail for ${url}`);
+        throw new Error(`Failed to fetch detail for ${id}`);
       }
       const data = await res.json();
-      setDetailsByUrl((prev) => ({ ...prev, [id]: data }));
+      setDetailsById((prev) => ({ ...prev, [id]: data }));
     } catch (err) {
       console.error("Failed to load detail:", err);
     } finally {
-      setLoadingUrl(null);
+      setLoadingId(null);
     }
   };
 
@@ -83,16 +83,16 @@ export default function App() {
 
       <div style={{ display: "grid", gap: 16 }}>
         {results.map((item, idx) => {
-          const r = item.recipe || {};
+          const r = item; // API now returns a flat object, no nested `recipe`
           const url = r.url || "";
-          const detail = detailsByUrl[url];
+          const detail = detailsById[r.id];
           const matched = Array.isArray(item.matched_ingredients)
             ? item.matched_ingredients
             : [];
 
           return (
             <div
-              key={url || idx}
+              key={r.id || idx}
               style={{
                 border: "1px solid #444",
                 borderRadius: 10,
@@ -116,10 +116,10 @@ export default function App() {
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <button
                       type="button"
-                      onClick={() => handleOpenDetail(url)}
-                      disabled={loadingUrl === url}
+                      onClick={() => handleOpenDetail(r.id)}
+                      disabled={loadingId === r.id}
                     >
-                      {loadingUrl === url
+                      {loadingId === r.id
                         ? "Translating detail..."
                         : detail
                         ? "English Detail Loaded"

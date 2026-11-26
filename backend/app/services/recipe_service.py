@@ -26,7 +26,7 @@ class RecipeService:
                 for item in ingredients
             )
         )
-        ids = self._scraper.search(",".join(wanted), limit) or list(SAMPLE_RECIPES)
+        ids = self._scraper.search(" ".join(wanted), limit) or list(SAMPLE_RECIPES)
 
         summaries = []
         for recipe_id in ids[:limit]:
@@ -39,7 +39,7 @@ class RecipeService:
                 summaries.append(self._summarize(recipe, matched))
         return sorted(summaries, key=lambda x: len(x.matched_ingredients), reverse=True)
 
-    def serach_by_name(self, query: str, limit: int = 5) -> list[RecipeSummary]:
+    def search_by_name(self, query: str, limit: int = 5) -> list[RecipeSummary]:
         summaries = []
         for recipe_id in self._scraper.search(query, limit):
             recipe =self._scraper.get(recipe_id)

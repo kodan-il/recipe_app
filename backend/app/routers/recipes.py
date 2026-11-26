@@ -7,12 +7,12 @@ from app.schemas import RecipeDetail,RecipeSearchResponse,RecipeSummary
 from app.services.recipe_service import RecipeService, RecipeNotFound
 from app.services.scrapper import ScraperError
 
-router = APIRouter(prefix="/api/recipes", tags=["recipes"])
+router = APIRouter(prefix="/api/v1/recipes", tags=["recipes"])
 
 ServiceDep = Annotated[RecipeService, Depends(get_recipe_service)]
 
-def _parse_ingredients(raw: list[set[str]]) -> list[str]:
-    parts = (part for values in raw or [] for value in values for part in value.split(","))
+def _parse_ingredients(raw: list[str] | None) -> list[str]:
+    parts = (part for value in raw or [] for part in value.split(","))
     return [part.strip() for part in parts if part.strip()]
 
 @router.get("", response_model=RecipeSearchResponse, summary="Search recipes by ingredients")
@@ -27,19 +27,19 @@ def search_recipes(
     ] = None,
     limit: Annotated[int, Query(ge=1, le=10)] = 5,
 ) -> RecipeSearchResponse:
-    wanted = _parse_ingredients([ingredients])
+    wanted = _parse_ingredients(ingredients)
     if bool(wanted) == bool(q):
         raise HTTPException(
-            status_code=402,  detail="Provide either 'ingredients' or 'q' parameter, but not both.",
+            status_code=422,  detail="Provide either 'ingredients' or 'q' parameter, but not both.",
         )
     try:
-        results = (
-            service.search_by_ingredients(wanted, limit=limit)
-            if wanted
-            else service.search_by_name(q, limit)
-        )
+        if wanted:
+            results = service.search_by_ingredients(wanted, limit=limit)
+        else:
+            assert q is not None
+            results = service.search_by_name(q, limit)
     except ScraperError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
+        raise HTTPException(status_code=502, detail="Upstream recipe site is unavailable.") from e
     return RecipeSearchResponse(count=len(results), results=results)
 
 @router.get("/{recipe_id}", response_model=RecipeDetail, summary="Get one recipe")

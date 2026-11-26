@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Any
 
 from fastapi import Depends
 
@@ -15,7 +16,7 @@ def get_translator():
     return RecipeTranslator()
 
 def get_recipe_service(
-    scraper: scrapper = Depends(get_scrapper),
+    scrapers: Any = Depends(get_scrapper),
     translator = Depends(get_translator),
 ) -> RecipeService:
-    return RecipeService(scraper, translator)
+    return RecipeService(scrapers, translator)
