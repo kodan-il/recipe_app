@@ -1,12 +1,14 @@
+import pytest
+import requests
 from fastapi.testclient import TestClient
 
-from backend.app.main import app
-from backend.app.services.translator import RecipeTranslator
-from backend.app.services.glossary import RecipeGlossary
-from backend.app.services.scrapper import scrapper
-import pytest
+from app.main import app
+from app.services.glossary import RecipeGlossary
+from app.services.scrapper import ScraperError, scrapper
+from app.services.translator import RecipeTranslator
 
 client = TestClient(app)
+
 
 def test_glossary_pre_and_post_processing():
     glossary = RecipeGlossary()
@@ -18,72 +20,73 @@ def test_glossary_pre_and_post_processing():
     post = glossary.apply_glossary_post("sauces know")
     assert post.lower() == "tofu"
 
-def test_translator_uses_cache_mocked_engine(monkeypatch):
 
+def test_translator_uses_cache_with_mocked_engine(monkeypatch):
     calls = {"count": 0}
+
     def fake_translate(text: str, from_code: str, to_code: str) -> str:
         calls["count"] += 1
         return f"translated-{text}"
 
-    monkeypatch.setattr("services.translator.argo_translate.translate", fake_translate)
+    monkeypatch.setattr("app.services.translator.argo_translate.translate", fake_translate)
 
     translator = RecipeTranslator()
     sample = "unique test ingredient xyz"
 
-    fist = translator.translate_safe(sample, "en")
+    first = translator.translate_safe(sample, "en")
     second = translator.translate_safe(sample, "en")
 
-    assert fist == second
-    assert calls["count"] == 1
+    assert first == second
+    assert calls["count"] == 1  # the second call was served from the cache
 
-def test_home_endpoint():
-    response = client.get("/")
-    assert response.status_code ==200
-    assert "message" in response.json()
 
-def test_by_ingredients_empty_input_returns_empty_results():
-    response = client.post("/api/recipes/by-ingredients", json=[])
-    data = response.json()
+def test_health_endpoint():
+    response = client.get("/health")
+
     assert response.status_code == 200
-    assert data["results"] == []
-    assert "message" in data
+    assert response.json() == {"status": "ok"}
+
+
+def test_search_without_filters_returns_422():
+    response = client.get("/api/v1/recipes")
+
+    assert response.status_code == 422
+
 
 class DummyResponse:
-    def __init__(self, text:str, status_code: int = 200):
+    def __init__(self, text: str, status_code: int = 200):
         self.text = text
         self.status_code = status_code
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise Exception(f"HTTP Error: {self.status_code}")
+            raise requests.HTTPError(f"HTTP Error: {self.status_code}")
 
-def test_scrapper_search_recipe(monkeypatch):
+
+def test_scrapper_search_returns_recipe_ids(monkeypatch):
     sample_search_html = """
-        <html>
-        <body>
+        <html><body>
             <a href="/id/resep/123456-nasi-goreng">Nasi Goreng</a>
             <a href="/id/resep/789012-tahu-telur">Tahu Telur</a>
             <a href="/id/cari">Search page</a>
-        </body>
-        </html>
+        </body></html>
     """
+
     def fake_get(url, headers=None, params=None, timeout=10):
-        return DummyResponse(sample_search_html, status_code=200)
+        return DummyResponse(sample_search_html)
 
-    monkeypatch.setattr("services.scrapper.requests.get", fake_get)
+    monkeypatch.setattr("app.services.scrapper.requests.get", fake_get)
 
-    s = scrapper()
-    urls = s.search_cookpad("nasi goreng", limit=5)
+    ids = scrapper().search("nasi goreng", limit=5)
 
-    assert isinstance(urls, list)
-    assert any("123456-nasi-goreng" in url for url in urls)
+    assert ids == ["123456", "789012"]  # ids only; non-recipe links are ignored
 
-def test_scrapper_handle_error(monkeypatch):
+
+def test_scrapper_wraps_network_errors(monkeypatch):
     def failing_get(*args, **kwargs):
-        raise ConnectionError("Offline test")
+        raise requests.ConnectionError("Offline test")
 
-    monkeypatch.setattr("services.scrapper.requests.get", failing_get)
+    monkeypatch.setattr("app.services.scrapper.requests.get", failing_get)
 
-    s = scrapper()
-    with pytest.raises(ConnectionError):
-        s.search_cookpad("tahu", limit=5)
+    with pytest.raises(ScraperError):
+        scrapper().search("tahu", limit=5)
